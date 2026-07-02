@@ -113,7 +113,7 @@ app.post("/api/return-liability/export", async (req, res) => {
       createdAt: Date.now()
     });
 
-    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const baseUrl = `https://${req.get("host")}`;
     const downloadUrl = `${baseUrl}/downloads/${id}`;
 
     return res.json({
