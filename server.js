@@ -13,21 +13,34 @@ app.get("/", (req, res) => {
 });
 
 async function testDownload(fileUrl, label) {
-  const response = await axios.get(fileUrl, {
-    responseType: "arraybuffer",
-    timeout: 20000,
-    maxContentLength: Infinity,
-    maxBodyLength: Infinity,
-    validateStatus: () => true
-  });
+  const startedAt = Date.now();
 
-  return {
-    label,
-    http_status: response.status,
-    content_type: response.headers["content-type"] || "",
-    content_length: response.headers["content-length"] || "",
-    downloaded_bytes: response.data ? response.data.byteLength : 0
-  };
+  try {
+    const response = await axios.get(fileUrl, {
+      responseType: "arraybuffer",
+      timeout: 5000,
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity,
+      validateStatus: () => true
+    });
+
+    return {
+      label,
+      ok: response.status >= 200 && response.status < 300,
+      http_status: response.status,
+      content_type: response.headers["content-type"] || "",
+      content_length: response.headers["content-length"] || "",
+      downloaded_bytes: response.data ? response.data.byteLength : 0,
+      elapsed_ms: Date.now() - startedAt
+    };
+  } catch (error) {
+    return {
+      label,
+      ok: false,
+      error: error.message,
+      elapsed_ms: Date.now() - startedAt
+    };
+  }
 }
 
 app.post("/api/return-liability/run", async (req, res) => {
@@ -44,14 +57,15 @@ app.post("/api/return-liability/run", async (req, res) => {
 
     return res.json({
       status: "success",
-      message: "파일 URL 다운로드 테스트 완료",
-      close_date,
+      message: "파일 URL 다운로드 가능 여부 테스트 완료",
       mode,
+      close_date,
       prev_file_download: prevFile,
       age_file_download: ageFile,
       logs: [
         "Dify에서 Render API로 파일 URL 전달 성공",
-        "Render 서버에서 파일 다운로드 시도 완료",
+        "Render 서버에서 각 파일 다운로드를 최대 5초씩 시도했습니다.",
+        "ok가 true이면 다운로드 가능, false이면 다운로드 불가입니다.",
         "아직 엑셀 파싱 및 계산은 수행하지 않았습니다."
       ]
     });
@@ -59,7 +73,7 @@ app.post("/api/return-liability/run", async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       status: "error",
-      message: "파일 다운로드 테스트 중 오류가 발생했습니다.",
+      message: "파일 다운로드 테스트 중 서버 오류가 발생했습니다.",
       detail: error.message
     });
   }
