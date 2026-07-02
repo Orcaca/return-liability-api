@@ -1,99 +1,157 @@
 const express = require("express");
 const cors = require("cors");
-const multer = require("multer");
 const XLSX = require("xlsx");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 50 * 1024 * 1024
-  }
-});
-
 app.use(cors());
-app.use(express.json({ limit: "50mb" }));
+app.use(express.json({ limit: "20mb" }));
+
+const fileStore = new Map();
 
 app.get("/", (req, res) => {
-  res.send("반품충당부채 API 서버가 실행 중입니다.");
+  res.send("반품충당부채 XLSX 생성 API 서버가 실행 중입니다.");
 });
 
-function readWorkbookFromUploadedFile(file, label) {
-  if (!file) {
-    throw new Error(`${label} 파일이 업로드되지 않았습니다.`);
-  }
+function parseCsvLine(line) {
+  const result = [];
+  let current = "";
+  let inQuotes = false;
 
-  const workbook = XLSX.read(file.buffer, { type: "buffer" });
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    const next = line[i + 1];
 
-  return {
-    label,
-    original_name: file.originalname,
-    size: file.size,
-    sheet_names: workbook.SheetNames
-  };
-}
-
-app.post(
-  "/api/return-liability/run",
-  upload.fields([
-    { name: "prev_file", maxCount: 1 },
-    { name: "age_file", maxCount: 1 }
-  ]),
-  async (req, res) => {
-    try {
-      const mode = req.body.mode;
-      const close_date = req.body.close_date;
-
-      if (!["update", "rollover"].includes(mode)) {
-        return res.status(400).json({
-          status: "error",
-          message: "작업구분은 update 또는 rollover여야 합니다."
-        });
-      }
-
-      if (!close_date) {
-        return res.status(400).json({
-          status: "error",
-          message: "기준일자가 없습니다."
-        });
-      }
-
-      const prevFile = req.files?.prev_file?.[0];
-      const ageFile = req.files?.age_file?.[0];
-
-      const prevWorkbook = readWorkbookFromUploadedFile(prevFile, "직전월 결과파일");
-      const ageWorkbook = readWorkbookFromUploadedFile(ageFile, "ERP 반품연령집계 파일");
-
-      const workName = mode === "update" ? "매월 갱신" : "연말 롤오버";
-
-      return res.json({
-        status: "success",
-        message: `${workName} 파일 업로드 및 엑셀 시트 읽기 성공`,
-        mode,
-        close_date,
-        prev_file: prevWorkbook,
-        age_file: ageWorkbook,
-        download_url: "",
-        logs: [
-          "Dify에서 Render API로 파일 직접 업로드 성공",
-          "Render 서버에서 업로드된 엑셀 파일 수신 완료",
-          "엑셀 시트명 읽기 완료",
-          "아직 실제 반품충당부채 계산 로직은 연결 전입니다."
-        ]
-      });
-
-    } catch (error) {
-      return res.status(500).json({
-        status: "error",
-        message: "파일 업로드 또는 엑셀 읽기 중 오류가 발생했습니다.",
-        detail: error.message
-      });
+    if (ch === '"' && inQuotes && next === '"') {
+      current += '"';
+      i++;
+    } else if (ch === '"') {
+      inQuotes = !inQuotes;
+    } else if (ch === "," && !inQuotes) {
+      result.push(current);
+      current = "";
+    } else {
+      current += ch;
     }
   }
-);
+
+  result.push(current);
+  return result;
+}
+
+function csvToRows(csvText) {
+  return String(csvText || "")
+    .split(/\r?\n/)
+    .filter(line => line.trim() !== "")
+    .map(parseCsvLine);
+}
+
+app.post("/api/return-liability/export", async (req, res) => {
+  try {
+    const {
+      close_date,
+      summary_text,
+      detail_csv
+    } = req.body;
+
+    if (!summary_text) {
+      return res.status(400).json({
+        status: "error",
+        message: "summary_text가 없습니다."
+      });
+    }
+
+    if (!detail_csv) {
+      return res.status(400).json({
+        status: "error",
+        message: "detail_csv가 없습니다."
+      });
+    }
+
+    const workbook = XLSX.utils.book_new();
+
+    const summaryRows = String(summary_text)
+      .split(/\r?\n/)
+      .map(line => [line]);
+
+    const detailRows = csvToRows(detail_csv);
+
+    const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
+    const detailSheet = XLSX.utils.aoa_to_sheet(detailRows);
+
+    summarySheet["!cols"] = [{ wch: 60 }];
+    detailSheet["!cols"] = [
+      { wch: 18 }, { wch: 28 }, { wch: 10 },
+      { wch: 15 }, { wch: 15 }, { wch: 15 },
+      { wch: 15 }, { wch: 15 }, { wch: 15 },
+      { wch: 15 }, { wch: 12 }, { wch: 20 },
+      { wch: 20 }, { wch: 20 }, { wch: 20 },
+      { wch: 15 }
+    ];
+
+    XLSX.utils.book_append_sheet(workbook, summarySheet, "요약");
+    XLSX.utils.book_append_sheet(workbook, detailSheet, "상세계산표");
+
+    const buffer = XLSX.write(workbook, {
+      type: "buffer",
+      bookType: "xlsx"
+    });
+
+    const id = Date.now().toString() + "_" + Math.random().toString(36).slice(2);
+
+    const safeDate = String(close_date || "")
+      .replace(/\./g, "")
+      .replace(/-/g, "")
+      .replace(/\s/g, "");
+
+    const filename = `반품충당부채_${safeDate || "result"}.xlsx`;
+
+    fileStore.set(id, {
+      buffer,
+      filename,
+      createdAt: Date.now()
+    });
+
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const downloadUrl = `${baseUrl}/downloads/${id}`;
+
+    return res.json({
+      status: "success",
+      message: "XLSX 생성 완료",
+      filename,
+      download_url: downloadUrl
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      status: "error",
+      message: "XLSX 생성 중 오류가 발생했습니다.",
+      detail: error.message
+    });
+  }
+});
+
+app.get("/downloads/:id", (req, res) => {
+  const item = fileStore.get(req.params.id);
+
+  if (!item) {
+    return res.status(404).send("파일을 찾을 수 없습니다. 다시 생성해 주세요.");
+  }
+
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  );
+
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename*=UTF-8''${encodeURIComponent(item.filename)}`
+  );
+
+  res.send(item.buffer);
+});
 
 app.listen(PORT, () => {
-  console.log(`Return Liability API running on http://localhost:${PORT}`);
+  console.log(`Return Liability XLSX API running on port ${PORT}`);
 });
