@@ -287,6 +287,42 @@ function buildJournalLines(liabilityAmount, recoveryAmount) {
     lines.push([
       "반환제품회수권",
       Math.abs(recoveryAmount),
+      "제품타계정대체",
+      Math.abs(recoveryAmount)
+    ]);
+  } else {
+    lines.push([
+      "제품타계정대체",
+      Math.abs(recoveryAmount),
+      "반환제품회수권",
+      Math.abs(recoveryAmount)
+    ]);
+  }
+
+  return lines;
+}
+  const lines = [];
+
+  if (liabilityAmount >= 0) {
+    lines.push([
+      "매출액",
+      Math.abs(liabilityAmount),
+      "반품충당부채",
+      Math.abs(liabilityAmount)
+    ]);
+  } else {
+    lines.push([
+      "반품충당부채",
+      Math.abs(liabilityAmount),
+      "매출액",
+      Math.abs(liabilityAmount)
+    ]);
+  }
+
+  if (recoveryAmount >= 0) {
+    lines.push([
+      "반환제품회수권",
+      Math.abs(recoveryAmount),
       "매출원가",
       Math.abs(recoveryAmount)
     ]);
@@ -307,12 +343,12 @@ function putJournalArea(aoa, journal) {
     aoa.push([]);
   }
 
-  const prevLiability = toNumber(journal?.prev_liability_balance);
-  const prevRecovery = toNumber(journal?.prev_recovery_balance);
+  const cumulativeLiability = toNumber(journal?.cumulative_liability_change);
+  const cumulativeRecovery = toNumber(journal?.cumulative_recovery_change);
   const monthlyLiability = toNumber(journal?.monthly_liability_change);
   const monthlyRecovery = toNumber(journal?.monthly_recovery_change);
 
-  const cumulativeLines = buildJournalLines(prevLiability, prevRecovery);
+  const cumulativeLines = buildJournalLines(cumulativeLiability, cumulativeRecovery);
   const monthlyLines = buildJournalLines(monthlyLiability, monthlyRecovery);
 
   for (let i = 0; i < 5; i++) {
