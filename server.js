@@ -249,8 +249,10 @@ function addBlock(aoa, title, rows, block1Rows, block2Rows) {
 
 function buildJournalLines(liabilityAmount, recoveryAmount) {
   return [
-    ["제품타계정대체", -recoveryAmount, "반품충당부채", liabilityAmount],
-    ["반환제품회수권", recoveryAmount, "제품매출", -liabilityAmount]
+    ["반품충당부채", liabilityAmount],
+    ["제품매출", -liabilityAmount],
+    ["제품타계정대체", -recoveryAmount],
+    ["반환제품회수권", recoveryAmount]
   ];
 }
 
@@ -267,38 +269,24 @@ function putJournalArea(aoa, journal) {
   const cumulativeLines = buildJournalLines(cumulativeLiability, cumulativeRecovery);
   const monthlyLines = buildJournalLines(monthlyLiability, monthlyRecovery);
 
-  for (let i = 0; i < 5; i++) {
+  const titleRow = new Array(20).fill("");
+  titleRow[11] = "전월말까지 누적 결산분개";
+  titleRow[16] = "당월말 입력 결산분개";
+  aoa.push(titleRow);
+
+  for (let i = 0; i < 4; i++) {
     const row = new Array(20).fill("");
 
-    if (i === 0) {
-      row[11] = "전월말까지 누적 결산분개";
-      row[16] = "당월말 입력 결산분개";
-    }
+    const left = cumulativeLines[i] || ["", ""];
+    const right = monthlyLines[i] || ["", ""];
 
-    if (i === 1) {
-      row[11] = "차변";
-      row[12] = "금액";
-      row[13] = "대변";
-      row[14] = "금액";
-      row[16] = "차변";
-      row[17] = "금액";
-      row[18] = "대변";
-      row[19] = "금액";
-    }
+    // L:M = 전월말까지 누적 결산분개
+    row[11] = left[0];
+    row[12] = left[1];
 
-    if (i >= 2 && i <= 3) {
-      const left = cumulativeLines[i - 2] || ["", "", "", ""];
-      const right = monthlyLines[i - 2] || ["", "", "", ""];
-
-      row[11] = left[0];
-      row[12] = left[1];
-      row[13] = left[2];
-      row[14] = left[3];
-      row[16] = right[0];
-      row[17] = right[1];
-      row[18] = right[2];
-      row[19] = right[3];
-    }
+    // Q:R = 당월말 입력 결산분개
+    row[16] = right[0];
+    row[17] = right[1];
 
     aoa.push(row);
   }
@@ -390,8 +378,8 @@ app.post("/api/return-liability/export", async (req, res) => {
 
     const rateAoa = [
       [],
-      ["", "", toNumber(scenario_factor)],
-      ["", "", toNumber(return_rate_assumption)]
+      ["", "반품 1년차 비율(10기준)", toNumber(scenario_factor)],
+      ["", "반품율 가정", toNumber(return_rate_assumption)]
     ];
 
     const rateSheet = XLSX.utils.aoa_to_sheet(rateAoa);
