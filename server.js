@@ -11,7 +11,7 @@ app.use(express.json({ limit: "20mb" }));
 const fileStore = new Map();
 
 app.get("/", (req, res) => {
-  res.send("반품충당부채 재투입용 XLSX 생성 API 서버가 실행 중입니다. journal-v3");
+  res.send("반품충당부채 재투입용 XLSX 생성 API 서버가 실행 중입니다. journal-v4");
 });
 
 function parseCsvLine(line) {
@@ -280,14 +280,24 @@ function putJournalArea(aoa, journal) {
     const left = cumulativeLines[i] || ["", "", "", ""];
     const right = monthlyLines[i] || ["", "", "", ""];
 
+    // 전월말까지 누적 결산분개
+    // L열 = 차변 계정
+    // M열 = 대변 계정
+    // N열 = 차변 금액
+    // O열 = 대변 금액
     row[11] = left[0];
-    row[12] = left[1];
-    row[13] = left[2];
+    row[12] = left[2];
+    row[13] = left[1];
     row[14] = left[3];
 
+    // 당월말 입력 결산분개
+    // Q열 = 차변 계정
+    // R열 = 대변 계정
+    // S열 = 차변 금액
+    // T열 = 대변 금액
     row[16] = right[0];
-    row[17] = right[1];
-    row[18] = right[2];
+    row[17] = right[2];
+    row[18] = right[1];
     row[19] = right[3];
 
     aoa.push(row);
