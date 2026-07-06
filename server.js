@@ -694,6 +694,108 @@ function overwriteRolloverJournalFromSheet(sheet, mode) {
   setJournalCell(sheet, "S90", monthlyRecovery);
 }
 
+function formatWon(value) {
+  return `${roundWon(value).toLocaleString("ko-KR")}원`;
+}
+
+function formatSignedWon(value) {
+  const n = roundWon(value);
+
+  if (n > 0) {
+    return `+${n.toLocaleString("ko-KR")}원`;
+  }
+
+  if (n < 0) {
+    return `${n.toLocaleString("ko-KR")}원`;
+  }
+
+  return "0원";
+}
+
+function getSummaryLine(summaryText, prefix) {
+  const lines = String(summaryText || "").split(/\r?\n/);
+
+  for (const line of lines) {
+    if (line.trim().startsWith(prefix)) {
+      return line.trim();
+    }
+  }
+
+  return "";
+}
+
+function modeLabelText(mode) {
+  const modeKey = String(mode || "").trim().toLowerCase();
+
+  if (modeKey === "rollover") {
+    return "연말 롤오버";
+  }
+
+  return "월별 업데이트";
+}
+
+function buildFinalSummaryText(sheet, mode, closeDate, originalSummaryText) {
+  const liability =
+    roundWon(getSheetNumber(sheet, "O", 83) + getSheetNumber(sheet, "P", 83));
+
+  const recovery =
+    roundWon(getSheetNumber(sheet, "Q", 83) + getSheetNumber(sheet, "R", 83));
+
+  const netProvision = roundWon(getSheetNumber(sheet, "S", 83));
+
+  // 최종 파일의 분개박스 기준
+  const monthlyLiability = roundWon(getSheetNumber(sheet, "T", 87));
+  const monthlyRecovery = roundWon(getSheetNumber(sheet, "S", 90));
+
+  const debitTransfer = roundWon(getSheetNumber(sheet, "S", 89));
+  const debitRecovery = roundWon(getSheetNumber(sheet, "S", 90));
+
+  const creditLiability = roundWon(getSheetNumber(sheet, "T", 87));
+  const creditSales = roundWon(getSheetNumber(sheet, "T", 88));
+
+  const erpLine = getSummaryLine(originalSummaryText, "ERP 매칭:");
+  const unmatchedLine = getSummaryLine(originalSummaryText, "미매칭 ERP 항목:");
+
+  const lines = [];
+
+  lines.push("반품충당부채 계산 완료");
+  lines.push("");
+  lines.push(`작업구분: ${modeLabelText(mode)}`);
+  lines.push(`기준일자: ${normalizeDateText(closeDate)}`);
+  lines.push("");
+  lines.push(`반품충당부채: ${formatWon(liability)}`);
+  lines.push(`전기 대비 증감: ${formatSignedWon(monthlyLiability)}`);
+  lines.push("");
+  lines.push(`반환제품회수권: ${formatWon(recovery)}`);
+  lines.push(`전기 대비 증감: ${formatSignedWon(monthlyRecovery)}`);
+  lines.push("");
+  lines.push(`순 충당부채: ${formatWon(netProvision)}`);
+  lines.push("");
+  lines.push("결산분개 미리보기");
+  lines.push("");
+  lines.push("차변");
+  lines.push(`제품타계정대체 ${formatWon(debitTransfer)}`);
+  lines.push(`반환제품회수권 ${formatWon(debitRecovery)}`);
+  lines.push("");
+  lines.push("대변");
+  lines.push(`반품충당부채 ${formatWon(creditLiability)}`);
+  lines.push(`제품매출 ${formatWon(creditSales)}`);
+
+  if (erpLine || unmatchedLine) {
+    lines.push("");
+
+    if (erpLine) {
+      lines.push(erpLine);
+    }
+
+    if (unmatchedLine) {
+      lines.push(unmatchedLine);
+    }
+  }
+
+  return lines.join("\n");
+}
+
 app.post("/api/return-liability/export", async (req, res) => {
   try {
     const {
@@ -782,6 +884,13 @@ app.post("/api/return-liability/export", async (req, res) => {
 
     overwriteRolloverJournalFromSheet(liabilitySheet, mode);
 
+    const finalSummaryText = buildFinalSummaryText(
+      liabilitySheet,
+      mode,
+      close_date,
+      summary_text
+    );
+
     liabilitySheet["!cols"] = [
       { wch: 16 },
       { wch: 24 },
@@ -859,7 +968,8 @@ app.post("/api/return-liability/export", async (req, res) => {
       status: "success",
       message: "재투입용 XLSX 생성 완료",
       filename,
-      download_url: downloadUrl
+      download_url: downloadUrl,
+      final_summary_text: finalSummaryText
     });
   } catch (error) {
     return res.status(500).json({
