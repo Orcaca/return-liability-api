@@ -382,12 +382,10 @@ function putJournalArea(aoa, journal, closeDate, journalMemoText) {
 
   const titleRow = new Array(20).fill("");
 
-  // L:N = 전월말 누적분개 제목 영역
   titleRow[11] = previousMonthEndText(closeDate);
   titleRow[12] = "적요";
   titleRow[13] = memoText;
 
-  // Q:S = 당월말 입력분개 제목 영역
   titleRow[16] = normalizeDateText(closeDate);
   titleRow[17] = "적요";
   titleRow[18] = memoText;
@@ -400,21 +398,15 @@ function putJournalArea(aoa, journal, closeDate, journalMemoText) {
     const left = cumulativeLines[i] || ["", "", "", ""];
     const right = monthlyLines[i] || ["", "", "", ""];
 
-    // 전월말까지 누적 결산분개
-    // L열 = 차변 계정
-    // M열 = 대변 계정
-    // N열 = 차변 금액
-    // O열 = 대변 금액
+    // 전월말 누적분개
+    // L = 차변 계정, M = 대변 계정, N = 차변 금액, O = 대변 금액
     row[11] = left[0];
     row[12] = left[2];
     row[13] = left[1];
     row[14] = left[3];
 
-    // 당월말 입력 결산분개
-    // Q열 = 차변 계정
-    // R열 = 대변 계정
-    // S열 = 차변 금액
-    // T열 = 대변 금액
+    // 당월말 입력분개
+    // Q = 차변 계정, R = 대변 계정, S = 차변 금액, T = 대변 금액
     row[16] = right[0];
     row[17] = right[2];
     row[18] = right[1];
@@ -630,6 +622,26 @@ function putTable3Formulas(sheet, returnRateAssumption) {
   setFormulaCell(sheet, "R", 83, "ROUND(SUM(R63:R82),0)", r83);
   setFormulaCell(sheet, "S", 83, "ROUND(SUM(S63:S82),0)", s83);
   setFormulaCell(sheet, "T", 83, "+(O83+P83)-(Q83+R83+S83)", t83);
+}
+
+function setJournalCell(sheet, address, value) {
+  if (value === "" || value === null || value === undefined) {
+    delete sheet[address];
+    return;
+  }
+
+  if (typeof value === "number") {
+    sheet[address] = {
+      t: "n",
+      v: value
+    };
+    return;
+  }
+
+  sheet[address] = {
+    t: "s",
+    v: String(value)
+  };
 }
 
 app.post("/api/return-liability/export", async (req, res) => {
