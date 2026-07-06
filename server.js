@@ -644,6 +644,56 @@ function setJournalCell(sheet, address, value) {
   };
 }
 
+function setJournalCell(sheet, address, value) {
+  if (value === "" || value === null || value === undefined) {
+    delete sheet[address];
+    return;
+  }
+
+  if (typeof value === "number") {
+    sheet[address] = {
+      t: "n",
+      v: value
+    };
+    return;
+  }
+
+  sheet[address] = {
+    t: "s",
+    v: String(value)
+  };
+}
+
+function overwriteRolloverJournalFromSheet(sheet, mode) {
+  const modeKey = String(mode || "").trim().toLowerCase();
+
+  if (modeKey !== "rollover") {
+    return;
+  }
+
+  const table3Liability = getSheetNumber(sheet, "O", 83) + getSheetNumber(sheet, "P", 83);
+  const table2Liability = getSheetNumber(sheet, "O", 56) + getSheetNumber(sheet, "P", 56);
+
+  const table3Recovery = getSheetNumber(sheet, "Q", 83) + getSheetNumber(sheet, "R", 83);
+  const table2Recovery = getSheetNumber(sheet, "Q", 56) + getSheetNumber(sheet, "R", 56);
+
+  const monthlyLiability = roundWon(table3Liability - table2Liability);
+  const monthlyRecovery = roundWon(table3Recovery - table2Recovery);
+
+  // 전월누적분개는 rollover에서 0
+  setJournalCell(sheet, "O87", 0);
+  setJournalCell(sheet, "O88", 0);
+  setJournalCell(sheet, "N89", 0);
+  setJournalCell(sheet, "N90", 0);
+
+  // 당월분개는 표3 - 표2 증감분
+  setJournalCell(sheet, "T87", monthlyLiability);
+  setJournalCell(sheet, "T88", -monthlyLiability);
+
+  setJournalCell(sheet, "S89", -monthlyRecovery);
+  setJournalCell(sheet, "S90", monthlyRecovery);
+}
+
 app.post("/api/return-liability/export", async (req, res) => {
   try {
     const {
@@ -729,6 +779,8 @@ app.post("/api/return-liability/export", async (req, res) => {
     const liabilitySheet = XLSX.utils.aoa_to_sheet(liabilityAoa);
 
     putTable3Formulas(liabilitySheet, return_rate_assumption);
+
+    overwriteRolloverJournalFromSheet(liabilitySheet, mode);
 
     liabilitySheet["!cols"] = [
       { wch: 16 },
