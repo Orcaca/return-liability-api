@@ -86,7 +86,6 @@ function toNumber(value) {
   }
 
   const num = Number(text);
-
   return Number.isFinite(num) ? num : 0;
 }
 
@@ -105,12 +104,10 @@ function toCellValue(value) {
     return "";
   }
 
-  const num = Number(text.replace(/,/g, ""));
+  const rawNumber = text.replace(/,/g, "");
+  const num = Number(rawNumber);
 
-  if (
-    Number.isFinite(num) &&
-    /^-?\d+(\.\d+)?(e-?\d+)?$/i.test(text.replace(/,/g, ""))
-  ) {
+  if (Number.isFinite(num) && /^-?\d+(\.\d+)?(e-?\d+)?$/i.test(rawNumber)) {
     return num;
   }
 
@@ -168,15 +165,10 @@ function detailObjectToRow(item) {
     toNumber(item["순매출액"]),
     toNumber(item["원가금액"]),
     toNumber(item["원가율"]),
-
-    // K/L = 적용 반품율
     toNumber(item["적용1년반품율"]),
     toNumber(item["적용2년반품율"]),
-
-    // M/N = 당해 반품율
     toNumber(item["당해1년반품율"]),
     toNumber(item["당해2년반품율"]),
-
     toNumber(item["당해매출기준_반품추정액"]),
     toNumber(item["전기매출기준_반품추정액"]),
     toNumber(item["당해매출기준_원가추정액"]),
@@ -203,27 +195,18 @@ function makeTotalRow(rows, block1Rows, block2Rows) {
   const currentSalesTotal = total[2];
   const netSalesTotal = total[7];
   const costTotal = total[8];
-
   const oneYearReturnTotal = total[5];
   const twoYearReturnTotal = total[6];
-
   const currentSalesReturnEstimate = total[14];
   const priorSalesReturnEstimate = total[15];
-
   const block1SalesTotal = sumColumn(block1Rows || [], 2);
   const block2SalesTotal = sumColumn(block2Rows || [], 2);
 
-  // J열 원가율 = I / H
   total[9] = netSalesTotal !== 0 ? costTotal / netSalesTotal : 0;
 
-  // K/L열 적용 반품율
   total[11] = block2SalesTotal !== 0 ? priorSalesReturnEstimate / block2SalesTotal : 0;
-  total[10] =
-    currentSalesTotal !== 0
-      ? currentSalesReturnEstimate / currentSalesTotal - total[11]
-      : 0;
+  total[10] = currentSalesTotal !== 0 ? currentSalesReturnEstimate / currentSalesTotal - total[11] : 0;
 
-  // M/N열 당해 반품율
   total[12] = block2SalesTotal !== 0 ? -oneYearReturnTotal / block2SalesTotal : 0;
   total[13] = block1SalesTotal !== 0 ? -twoYearReturnTotal / block1SalesTotal : 0;
 
@@ -266,91 +249,9 @@ function addBlock(aoa, title, rows, block1Rows, block2Rows) {
 
 function buildJournalLines(liabilityAmount, recoveryAmount) {
   return [
-    [
-      "제품타계정대체",
-      -recoveryAmount,
-      "반품충당부채",
-      liabilityAmount
-    ],
-    [
-      "반환제품회수권",
-      recoveryAmount,
-      "제품매출",
-      -liabilityAmount
-    ]
+    ["제품타계정대체", -recoveryAmount, "반품충당부채", liabilityAmount],
+    ["반환제품회수권", recoveryAmount, "제품매출", -liabilityAmount]
   ];
-}
-  const lines = [];
-
-  if (liabilityAmount >= 0) {
-    lines.push([
-      "매출액",
-      Math.abs(liabilityAmount),
-      "반품충당부채",
-      Math.abs(liabilityAmount)
-    ]);
-  } else {
-    lines.push([
-      "반품충당부채",
-      Math.abs(liabilityAmount),
-      "매출액",
-      Math.abs(liabilityAmount)
-    ]);
-  }
-
-  if (recoveryAmount >= 0) {
-    lines.push([
-      "반환제품회수권",
-      Math.abs(recoveryAmount),
-      "제품타계정대체",
-      Math.abs(recoveryAmount)
-    ]);
-  } else {
-    lines.push([
-      "제품타계정대체",
-      Math.abs(recoveryAmount),
-      "반환제품회수권",
-      Math.abs(recoveryAmount)
-    ]);
-  }
-
-  return lines;
-}
-  const lines = [];
-
-  if (liabilityAmount >= 0) {
-    lines.push([
-      "매출액",
-      Math.abs(liabilityAmount),
-      "반품충당부채",
-      Math.abs(liabilityAmount)
-    ]);
-  } else {
-    lines.push([
-      "반품충당부채",
-      Math.abs(liabilityAmount),
-      "매출액",
-      Math.abs(liabilityAmount)
-    ]);
-  }
-
-  if (recoveryAmount >= 0) {
-    lines.push([
-      "반환제품회수권",
-      Math.abs(recoveryAmount),
-      "매출원가",
-      Math.abs(recoveryAmount)
-    ]);
-  } else {
-    lines.push([
-      "매출원가",
-      Math.abs(recoveryAmount),
-      "반환제품회수권",
-      Math.abs(recoveryAmount)
-    ]);
-  }
-
-  return lines;
 }
 
 function putJournalArea(aoa, journal) {
@@ -379,7 +280,6 @@ function putJournalArea(aoa, journal) {
       row[12] = "금액";
       row[13] = "대변";
       row[14] = "금액";
-
       row[16] = "차변";
       row[17] = "금액";
       row[18] = "대변";
@@ -394,7 +294,6 @@ function putJournalArea(aoa, journal) {
       row[12] = left[1];
       row[13] = left[2];
       row[14] = left[3];
-
       row[16] = right[0];
       row[17] = right[1];
       row[18] = right[2];
@@ -435,37 +334,31 @@ app.post("/api/return-liability/export", async (req, res) => {
     }
 
     const workbook = XLSX.utils.book_new();
-
     const liabilityAoa = [];
 
     const oldBlock1 = normalizeRawRows(block1_rows);
     const oldBlock2 = normalizeRawRows(block2_rows);
-
     const detailObjects = csvToObjects(detail_csv);
     const newBlock = detailObjects.map(detailObjectToRow);
 
-    // 표1 위 빈행 6개
     for (let i = 0; i < 6; i++) {
       liabilityAoa.push([]);
     }
 
     addBlock(liabilityAoa, "표 1", oldBlock1, oldBlock1, oldBlock2);
 
-    // 표1과 표2 사이 빈행 4개
     for (let i = 0; i < 4; i++) {
       liabilityAoa.push([]);
     }
 
     addBlock(liabilityAoa, "표 2", oldBlock2, oldBlock1, oldBlock2);
 
-    // 표2와 표3 사이 빈행 4개
     for (let i = 0; i < 4; i++) {
       liabilityAoa.push([]);
     }
 
     addBlock(liabilityAoa, "표 3", newBlock, oldBlock1, oldBlock2);
 
-    // L86:O90, Q86:T90 결산분개 영역
     putJournalArea(liabilityAoa, journal || {});
 
     const liabilitySheet = XLSX.utils.aoa_to_sheet(liabilityAoa);
@@ -521,11 +414,7 @@ app.post("/api/return-liability/export", async (req, res) => {
       bookType: "xlsx"
     });
 
-    const id =
-      Date.now().toString() +
-      "_" +
-      Math.random().toString(36).slice(2);
-
+    const id = Date.now().toString() + "_" + Math.random().toString(36).slice(2);
     const safeDate = String(close_date || "")
       .replace(/\./g, "")
       .replace(/-/g, "")
@@ -548,7 +437,6 @@ app.post("/api/return-liability/export", async (req, res) => {
       filename,
       download_url: downloadUrl
     });
-
   } catch (error) {
     return res.status(500).json({
       status: "error",
