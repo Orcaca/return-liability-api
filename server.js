@@ -277,16 +277,24 @@ function putJournalArea(aoa, journal) {
   for (let i = 0; i < 4; i++) {
     const row = new Array(20).fill("");
 
-    const left = cumulativeLines[i] || ["", ""];
-    const right = monthlyLines[i] || ["", ""];
+    const left = cumulativeLines[i] || ["", "", "", ""];
+    const right = monthlyLines[i] || ["", "", "", ""];
 
-    // L:M = 전월말까지 누적 결산분개
+    // L:M = 전월말까지 누적분개 차변
     row[11] = left[0];
     row[12] = left[1];
 
-    // Q:R = 당월말 입력 결산분개
+    // N:O = 전월말까지 누적분개 대변
+    row[13] = left[2];
+    row[14] = left[3];
+
+    // Q:R = 당월말 입력분개 차변
     row[16] = right[0];
     row[17] = right[1];
+
+    // S:T = 당월말 입력분개 대변
+    row[18] = right[2];
+    row[19] = right[3];
 
     aoa.push(row);
   }
