@@ -11,7 +11,7 @@ app.use(express.json({ limit: "20mb" }));
 const fileStore = new Map();
 
 app.get("/", (req, res) => {
-  res.send("반품충당부채 재투입용 XLSX 생성 API 서버가 실행 중입니다. journal-v4");
+  res.send("반품충당부채 재투입용 XLSX 생성 API 서버가 실행 중입니다. total-v1");
 });
 
 function parseCsvLine(line) {
@@ -118,12 +118,16 @@ function isBlank(value) {
   return value === null || value === undefined || String(value).trim() === "";
 }
 
-function normalizeRawRows(rows) {
-  if (!Array.isArray(rows)) {
-    return [];
-  }
-
+function splitRowsAndTotal(rows) {
   const output = [];
+  let totalRow = null;
+
+  if (!Array.isArray(rows)) {
+    return {
+      rows: [],
+      totalRow: null
+    };
+  }
 
   rows.forEach((row) => {
     const out = [];
@@ -144,13 +148,41 @@ function normalizeRawRows(rows) {
       out.slice(2).some((v) => !isBlank(v));
 
     if (isTotalRow) {
+      totalRow = out;
       return;
     }
 
     output.push(out);
   });
 
-  return output;
+  return {
+    rows: output,
+    totalRow
+  };
+}
+
+function getTotalValue(totalRow, colIndex, fallbackValue) {
+  if (Array.isArray(totalRow)) {
+    const value = toNumber(totalRow[colIndex]);
+
+    if (value !== 0 || !isBlank(totalRow[colIndex])) {
+      return value;
+    }
+  }
+
+  return fallbackValue;
+}
+
+function averageNumbers(values) {
+  const numbers = values.filter((value) => {
+    return typeof value === "number" && Number.isFinite(value);
+  });
+
+  if (numbers.length === 0) {
+    return 0;
+  }
+
+  return numbers.reduce((sum, value) => sum + value, 0) / numbers.length;
 }
 
 function detailObjectToRow(item) {
@@ -185,35 +217,66 @@ function sumColumn(rows, colIndex) {
   }, 0);
 }
 
-function makeTotalRow(rows, block1Rows, block2Rows) {
+function makeTotalRow(rows, block1Rows, block2Rows, block1TotalRow, block2TotalRow) {
   const total = new Array(20).fill("");
 
   for (let col = 2; col <= 18; col++) {
     total[col] = sumColumn(rows, col);
   }
 
-  const currentSalesTotal = total[2];
   const netSalesTotal = total[7];
   const costTotal = total[8];
-  const oneYearReturnTotal = total[5];
-  const twoYearReturnTotal = total[6];
-  const currentSalesReturnEstimate = total[14];
-  const priorSalesReturnEstimate = total[15];
-  const block1SalesTotal = sumColumn(block1Rows || [], 2);
-  const block2SalesTotal = sumColumn(block2Rows || [], 2);
+
+  const block1SalesTotal = getTotalValue(
+    block1TotalRow,
+    2,
+    sumColumn(block1Rows || [], 2)
+  );
+
+  const block2SalesTotal = getTotalValue(
+    block2TotalRow,
+    2,
+    sumColumn(block2Rows || [], 2)
+  );
 
   total[9] = netSalesTotal !== 0 ? costTotal / netSalesTotal : 0;
 
-  total[11] = block2SalesTotal !== 0 ? priorSalesReturnEstimate / block2SalesTotal : 0;
-  total[10] = currentSalesTotal !== 0 ? currentSalesReturnEstimate / currentSalesTotal - total[11] : 0;
+  // M총계 = -F총계 / 표2 C총계
+  total[12] = block2SalesTotal !== 0 ? -total[5] / block2SalesTotal : 0;
 
-  total[12] = block2SalesTotal !== 0 ? -oneYearReturnTotal / block2SalesTotal : 0;
-  total[13] = block1SalesTotal !== 0 ? -twoYearReturnTotal / block1SalesTotal : 0;
+  // N총계 = -G총계 / 표1 C총계
+  total[13] = block1SalesTotal !== 0 ? -total[6] / block1SalesTotal : 0;
+
+  // K총계 = AVERAGE(M현재, M표2, M표1)
+  total[10] = averageNumbers([
+    total[12],
+    getTotalValue(block2TotalRow, 12, null),
+    getTotalValue(block1TotalRow, 12, null)
+  ]);
+
+  // L총계 = AVERAGE(N현재, N표2, N표1)
+  total[11] = averageNumbers([
+    total[13],
+    getTotalValue(block2TotalRow, 13, null),
+    getTotalValue(block1TotalRow, 13, null)
+  ]);
+
+  // 수기파일 방식: O~S는 ROUND(SUM(...), 0)
+  for (let col = 14; col <= 18; col++) {
+    total[col] = Math.round(total[col]);
+  }
 
   return total;
 }
+function addBlock(aoa, title, rows, options = {}) {
+  const {
+    block1Rows = [],
+    block2Rows = [],
+    block1TotalRow = null,
+    block2TotalRow = null,
+    totalRowOverride = null
+  } = options;
 
-function addBlock(aoa, title, rows, block1Rows, block2Rows) {
   const header = [
     "대분류",
     "구분",
@@ -244,7 +307,19 @@ function addBlock(aoa, title, rows, block1Rows, block2Rows) {
     aoa.push(row);
   });
 
-  aoa.push(makeTotalRow(rows, block1Rows, block2Rows));
+  if (Array.isArray(totalRowOverride)) {
+    aoa.push(totalRowOverride);
+  } else {
+    aoa.push(
+      makeTotalRow(
+        rows,
+        block1Rows,
+        block2Rows,
+        block1TotalRow,
+        block2TotalRow
+      )
+    );
+  }
 }
 
 function buildJournalLines(liabilityAmount, recoveryAmount) {
@@ -336,8 +411,15 @@ app.post("/api/return-liability/export", async (req, res) => {
     const workbook = XLSX.utils.book_new();
     const liabilityAoa = [];
 
-    const oldBlock1 = normalizeRawRows(block1_rows);
-    const oldBlock2 = normalizeRawRows(block2_rows);
+    const oldBlock1Split = splitRowsAndTotal(block1_rows);
+    const oldBlock2Split = splitRowsAndTotal(block2_rows);
+    
+    const oldBlock1 = oldBlock1Split.rows;
+    const oldBlock2 = oldBlock2Split.rows;
+
+    const oldBlock1TotalRow = oldBlock1Split.totalRow;
+    const oldBlock2TotalRow = oldBlock2Split.totalRow;
+
     const detailObjects = csvToObjects(detail_csv);
     const newBlock = detailObjects.map(detailObjectToRow);
 
@@ -345,19 +427,36 @@ app.post("/api/return-liability/export", async (req, res) => {
       liabilityAoa.push([]);
     }
 
-    addBlock(liabilityAoa, "표 1", oldBlock1, oldBlock1, oldBlock2);
+    addBlock(liabilityAoa, "표 1", oldBlock1, {
+      totalRowOverride: oldBlock1TotalRow,
+      block1Rows: oldBlock1,
+      block2Rows: oldBlock2,
+      block1TotalRow: oldBlock1TotalRow,
+      block2TotalRow: oldBlock2TotalRow
+    });
 
     for (let i = 0; i < 4; i++) {
       liabilityAoa.push([]);
     }
 
-    addBlock(liabilityAoa, "표 2", oldBlock2, oldBlock1, oldBlock2);
+    addBlock(liabilityAoa, "표 2", oldBlock2, {
+      totalRowOverride: oldBlock2TotalRow,
+      block1Rows: oldBlock1,
+      block2Rows: oldBlock2,
+      block1TotalRow: oldBlock1TotalRow,
+      block2TotalRow: oldBlock2TotalRow
+    });
 
     for (let i = 0; i < 4; i++) {
       liabilityAoa.push([]);
     }
 
-    addBlock(liabilityAoa, "표 3", newBlock, oldBlock1, oldBlock2);
+    addBlock(liabilityAoa, "표 3", newBlock, {
+      block1Rows: oldBlock1,
+      block2Rows: oldBlock2,
+      block1TotalRow: oldBlock1TotalRow,
+      block2TotalRow: oldBlock2TotalRow
+    });
 
     putJournalArea(liabilityAoa, journal || {});
 
