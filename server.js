@@ -11,7 +11,7 @@ app.use(express.json({ limit: "20mb" }));
 const fileStore = new Map();
 
 app.get("/", (req, res) => {
-  res.send("반품충당부채 재투입용 XLSX 생성 API 서버가 실행 중입니다.");
+  res.send("반품충당부채 재투입용 XLSX 생성 API 서버가 실행 중입니다. journal-v3");
 });
 
 function parseCsvLine(line) {
@@ -249,10 +249,10 @@ function addBlock(aoa, title, rows, block1Rows, block2Rows) {
 
 function buildJournalLines(liabilityAmount, recoveryAmount) {
   return [
-    ["반품충당부채", liabilityAmount],
-    ["제품매출", -liabilityAmount],
-    ["제품타계정대체", -recoveryAmount],
-    ["반환제품회수권", recoveryAmount]
+    ["", "", "반품충당부채", liabilityAmount],
+    ["", "", "제품매출", -liabilityAmount],
+    ["제품타계정대체", -recoveryAmount, "", ""],
+    ["반환제품회수권", recoveryAmount, "", ""]
   ];
 }
 
@@ -280,19 +280,13 @@ function putJournalArea(aoa, journal) {
     const left = cumulativeLines[i] || ["", "", "", ""];
     const right = monthlyLines[i] || ["", "", "", ""];
 
-    // L:M = 전월말까지 누적분개 차변
     row[11] = left[0];
     row[12] = left[1];
-
-    // N:O = 전월말까지 누적분개 대변
     row[13] = left[2];
     row[14] = left[3];
 
-    // Q:R = 당월말 입력분개 차변
     row[16] = right[0];
     row[17] = right[1];
-
-    // S:T = 당월말 입력분개 대변
     row[18] = right[2];
     row[19] = right[3];
 
