@@ -89,6 +89,36 @@ function toNumber(value) {
   return Number.isFinite(num) ? num : 0;
 }
 
+function roundWon(value) {
+  return Math.round(toNumber(value));
+}
+
+function normalizeDateText(value) {
+  return String(value || "")
+    .trim()
+    .replace(/-/g, ".");
+}
+
+function previousMonthEndText(closeDateText) {
+  const text = normalizeDateText(closeDateText);
+  const match = /^(\d{4})\.(\d{1,2})\.(\d{1,2})$/.exec(text);
+
+  if (!match) {
+    return "";
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+
+  const date = new Date(year, month - 1, 0);
+
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+
+  return `${yyyy}.${mm}.${dd}`;
+}
+
 function toCellValue(value) {
   if (value === null || value === undefined) {
     return "";
@@ -323,15 +353,18 @@ function addBlock(aoa, title, rows, options = {}) {
 }
 
 function buildJournalLines(liabilityAmount, recoveryAmount) {
+  const liability = roundWon(liabilityAmount);
+  const recovery = roundWon(recoveryAmount);
+
   return [
-    ["", "", "반품충당부채", liabilityAmount],
-    ["", "", "제품매출", -liabilityAmount],
-    ["제품타계정대체", -recoveryAmount, "", ""],
-    ["반환제품회수권", recoveryAmount, "", ""]
+    ["", "", "반품충당부채", liability],
+    ["", "", "제품매출", -liability],
+    ["제품타계정대체", -recovery, "", ""],
+    ["반환제품회수권", recovery, "", ""]
   ];
 }
 
-function putJournalArea(aoa, journal) {
+function putJournalArea(aoa, journal, closeDate, journalMemoText) {
   while (aoa.length < 85) {
     aoa.push([]);
   }
@@ -344,9 +377,21 @@ function putJournalArea(aoa, journal) {
   const cumulativeLines = buildJournalLines(cumulativeLiability, cumulativeRecovery);
   const monthlyLines = buildJournalLines(monthlyLiability, monthlyRecovery);
 
+  const memoText =
+    journalMemoText || " /재경팀/월말 반품충당부채 설정/";
+
   const titleRow = new Array(20).fill("");
-  titleRow[11] = "전월말까지 누적 결산분개";
-  titleRow[16] = "당월말 입력 결산분개";
+
+  // L:N = 전월말 누적분개 제목 영역
+  titleRow[11] = previousMonthEndText(closeDate);
+  titleRow[12] = "적요";
+  titleRow[13] = memoText;
+
+  // Q:S = 당월말 입력분개 제목 영역
+  titleRow[16] = normalizeDateText(closeDate);
+  titleRow[17] = "적요";
+  titleRow[18] = memoText;
+
   aoa.push(titleRow);
 
   for (let i = 0; i < 4; i++) {
@@ -391,7 +436,8 @@ app.post("/api/return-liability/export", async (req, res) => {
       age_csv,
       scenario_factor,
       return_rate_assumption,
-      journal
+      journal,
+      journal_memo_text
     } = req.body;
 
     if (!["update", "rollover"].includes(mode)) {
@@ -458,7 +504,7 @@ app.post("/api/return-liability/export", async (req, res) => {
       block2TotalRow: oldBlock2TotalRow
     });
 
-    putJournalArea(liabilityAoa, journal || {});
+    putJournalArea(liabilityAoa, journal || {}, close_date, journal_memo_text);
 
     const liabilitySheet = XLSX.utils.aoa_to_sheet(liabilityAoa);
 
