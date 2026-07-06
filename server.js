@@ -743,9 +743,20 @@ function buildFinalSummaryText(sheet, mode, closeDate, originalSummaryText) {
 
   const netProvision = roundWon(getSheetNumber(sheet, "S", 83));
 
-  // 최종 파일의 분개박스 기준
+  // 전월 대비 / 당월 입력분개 금액
   const monthlyLiability = roundWon(getSheetNumber(sheet, "T", 87));
   const monthlyRecovery = roundWon(getSheetNumber(sheet, "S", 90));
+
+  // 전기 대비 증감 금액
+  // 반품충당부채: 전월말 누적분개 O87 + 당월분개 T87
+  // 반환제품회수권: 전월말 누적분개 N90 + 당월분개 S90
+  const cumulativeLiabilityChange = roundWon(
+    getSheetNumber(sheet, "O", 87) + getSheetNumber(sheet, "T", 87)
+  );
+
+  const cumulativeRecoveryChange = roundWon(
+    getSheetNumber(sheet, "N", 90) + getSheetNumber(sheet, "S", 90)
+  );
 
   const debitTransfer = roundWon(getSheetNumber(sheet, "S", 89));
   const debitRecovery = roundWon(getSheetNumber(sheet, "S", 90));
@@ -764,10 +775,10 @@ function buildFinalSummaryText(sheet, mode, closeDate, originalSummaryText) {
   lines.push(`기준일자: ${normalizeDateText(closeDate)}`);
   lines.push("");
   lines.push(`반품충당부채: ${formatWon(liability)}`);
-  lines.push(`전기 대비 증감: ${formatSignedWon(monthlyLiability)}`);
+  lines.push(`전기 대비 증감: ${formatSignedWon(cumulativeLiabilityChange)}`);
   lines.push("");
   lines.push(`반환제품회수권: ${formatWon(recovery)}`);
-  lines.push(`전기 대비 증감: ${formatSignedWon(monthlyRecovery)}`);
+  lines.push(`전기 대비 증감: ${formatSignedWon(cumulativeRecoveryChange)}`);
   lines.push("");
   lines.push(`순 충당부채: ${formatWon(netProvision)}`);
   lines.push("");
