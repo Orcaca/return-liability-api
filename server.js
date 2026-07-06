@@ -434,6 +434,204 @@ function putTable3CheckFormulas(sheet) {
   }
 }
 
+function getSheetNumber(sheet, col, row) {
+  const cell = sheet[`${col}${row}`];
+
+  if (!cell) {
+    return 0;
+  }
+
+  return toNumber(cell.v);
+}
+
+function setFormulaCell(sheet, col, row, formula, cachedValue) {
+  const value = Number.isFinite(cachedValue) ? cachedValue : 0;
+
+  sheet[`${col}${row}`] = {
+    t: "n",
+    f: formula,
+    v: value
+  };
+}
+
+function sumComputedRows(rows, key) {
+  return rows.reduce((sum, row) => {
+    return sum + toNumber(row[key]);
+  }, 0);
+}
+
+function putTable3Formulas(sheet, returnRateAssumption) {
+  const rateCell = "'반품율'!$C$3";
+  const assumption = toNumber(returnRateAssumption) || 2;
+  const computedRows = [];
+
+  for (let row = 63; row <= 82; row++) {
+    const table2Row = row - 27; // 63 -> 36
+    const table1Row = row - 54; // 63 -> 9
+
+    const c = getSheetNumber(sheet, "C", row);
+    const f = getSheetNumber(sheet, "F", row);
+    const g = getSheetNumber(sheet, "G", row);
+    const h = getSheetNumber(sheet, "H", row);
+    const i = getSheetNumber(sheet, "I", row);
+
+    const table2C = getSheetNumber(sheet, "C", table2Row);
+    const table1C = getSheetNumber(sheet, "C", table1Row);
+    const table2J = getSheetNumber(sheet, "J", table2Row);
+
+    const table2M = getSheetNumber(sheet, "M", table2Row);
+    const table1M = getSheetNumber(sheet, "M", table1Row);
+    const table2N = getSheetNumber(sheet, "N", table2Row);
+    const table1N = getSheetNumber(sheet, "N", table1Row);
+
+    const j = h !== 0 ? i / h : 0;
+    const m = table2C !== 0 ? -f / table2C : 0;
+    const n = table1C !== 0 ? -g / table1C : 0;
+
+    let k = 0;
+    let l = 0;
+
+    if (assumption === 1) {
+      k = m;
+      l = n;
+    } else if (assumption === 2) {
+      k = averageNumbers([m, table2M, table1M]);
+      l = averageNumbers([n, table2N, table1N]);
+    } else {
+      k = averageNumbers([m, table2M]);
+      l = averageNumbers([n, table2N]);
+    }
+
+    const o = Math.abs(j) > 1 ? 0 : c * (assumption === 1 ? m + n : k + l);
+    const p = Math.abs(j) > 1 ? 0 : table2C * (assumption === 1 ? n : l);
+    const q = o * (j > 1 ? 1 : j);
+    const r = p * (table2J > 1 ? 1 : table2J);
+    const s = o + p - q - r;
+    const t = (o + p) - (q + r + s);
+
+    computedRows.push({ j, k, l, m, n, o, p, q, r, s, t });
+
+    setFormulaCell(sheet, "J", row, `IFERROR(I${row}/H${row},0)`, j);
+
+    setFormulaCell(
+      sheet,
+      "K",
+      row,
+      `CHOOSE(${rateCell},M${row},AVERAGE(M${row},M${table2Row},M${table1Row}),AVERAGE(M${row},M${table2Row}))`,
+      k
+    );
+
+    setFormulaCell(
+      sheet,
+      "L",
+      row,
+      `CHOOSE(${rateCell},N${row},AVERAGE(N${row},N${table2Row},N${table1Row}),AVERAGE(N${row},N${table2Row}))`,
+      l
+    );
+
+    setFormulaCell(sheet, "M", row, `IFERROR(-F${row}/C${table2Row},0)`, m);
+    setFormulaCell(sheet, "N", row, `IFERROR(-G${row}/C${table1Row},0)`, n);
+
+    setFormulaCell(
+      sheet,
+      "O",
+      row,
+      `IF(ABS(J${row})>1,0,C${row}*CHOOSE(${rateCell},SUM(M${row}:N${row}),SUM(K${row}:L${row}),SUM(K${row}:L${row})))`,
+      o
+    );
+
+    setFormulaCell(
+      sheet,
+      "P",
+      row,
+      `IF(ABS(J${row})>1,0,C${table2Row}*CHOOSE(${rateCell},N${row},L${row},L${row}))`,
+      p
+    );
+
+    setFormulaCell(sheet, "Q", row, `O${row}*IF(J${row}>1,1,J${row})`, q);
+    setFormulaCell(sheet, "R", row, `P${row}*IF(J${table2Row}>1,1,J${table2Row})`, r);
+    setFormulaCell(sheet, "S", row, `O${row}+P${row}-Q${row}-R${row}`, s);
+    setFormulaCell(sheet, "T", row, `+(O${row}+P${row})-(Q${row}+R${row}+S${row})`, t);
+  }
+
+  const j83 = getSheetNumber(sheet, "H", 83) !== 0
+    ? getSheetNumber(sheet, "I", 83) / getSheetNumber(sheet, "H", 83)
+    : 0;
+
+  const m83 = getSheetNumber(sheet, "C", 56) !== 0
+    ? -getSheetNumber(sheet, "F", 83) / getSheetNumber(sheet, "C", 56)
+    : 0;
+
+  const n83 = getSheetNumber(sheet, "C", 29) !== 0
+    ? -getSheetNumber(sheet, "G", 83) / getSheetNumber(sheet, "C", 29)
+    : 0;
+
+  let k83 = 0;
+  let l83 = 0;
+
+  if (assumption === 1) {
+    k83 = m83;
+    l83 = n83;
+  } else if (assumption === 2) {
+    k83 = averageNumbers([
+      m83,
+      getSheetNumber(sheet, "M", 56),
+      getSheetNumber(sheet, "M", 29)
+    ]);
+
+    l83 = averageNumbers([
+      n83,
+      getSheetNumber(sheet, "N", 56),
+      getSheetNumber(sheet, "N", 29)
+    ]);
+  } else {
+    k83 = averageNumbers([
+      m83,
+      getSheetNumber(sheet, "M", 56)
+    ]);
+
+    l83 = averageNumbers([
+      n83,
+      getSheetNumber(sheet, "N", 56)
+    ]);
+  }
+
+  const o83 = Math.round(sumComputedRows(computedRows, "o"));
+  const p83 = Math.round(sumComputedRows(computedRows, "p"));
+  const q83 = Math.round(sumComputedRows(computedRows, "q"));
+  const r83 = Math.round(sumComputedRows(computedRows, "r"));
+  const s83 = Math.round(sumComputedRows(computedRows, "s"));
+  const t83 = (o83 + p83) - (q83 + r83 + s83);
+
+  setFormulaCell(sheet, "J", 83, "IFERROR(I83/H83,0)", j83);
+
+  setFormulaCell(
+    sheet,
+    "K",
+    83,
+    `CHOOSE(${rateCell},M83,AVERAGE(M83,M56,M29),AVERAGE(M83,M56))`,
+    k83
+  );
+
+  setFormulaCell(
+    sheet,
+    "L",
+    83,
+    `CHOOSE(${rateCell},N83,AVERAGE(N83,N56,N29),AVERAGE(N83,N56))`,
+    l83
+  );
+
+  setFormulaCell(sheet, "M", 83, "IFERROR(-F83/C56,0)", m83);
+  setFormulaCell(sheet, "N", 83, "IFERROR(-G83/C29,0)", n83);
+
+  setFormulaCell(sheet, "O", 83, "ROUND(SUM(O63:O82),0)", o83);
+  setFormulaCell(sheet, "P", 83, "ROUND(SUM(P63:P82),0)", p83);
+  setFormulaCell(sheet, "Q", 83, "ROUND(SUM(Q63:Q82),0)", q83);
+  setFormulaCell(sheet, "R", 83, "ROUND(SUM(R63:R82),0)", r83);
+  setFormulaCell(sheet, "S", 83, "ROUND(SUM(S63:S82),0)", s83);
+  setFormulaCell(sheet, "T", 83, "+(O83+P83)-(Q83+R83+S83)", t83);
+}
+
 app.post("/api/return-liability/export", async (req, res) => {
   try {
     const {
@@ -518,7 +716,7 @@ app.post("/api/return-liability/export", async (req, res) => {
 
     const liabilitySheet = XLSX.utils.aoa_to_sheet(liabilityAoa);
 
-    putTable3CheckFormulas(liabilitySheet);
+    putTable3Formulas(liabilitySheet, return_rate_assumption);
 
     liabilitySheet["!cols"] = [
       { wch: 16 },
@@ -565,6 +763,11 @@ app.post("/api/return-liability/export", async (req, res) => {
     const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
     summarySheet["!cols"] = [{ wch: 70 }];
     XLSX.utils.book_append_sheet(workbook, summarySheet, "요약");
+
+    workbook.Workbook = workbook.Workbook || {};
+    workbook.Workbook.CalcPr = {
+      calcMode: "auto"
+    };
 
     const buffer = XLSX.write(workbook, {
       type: "buffer",
