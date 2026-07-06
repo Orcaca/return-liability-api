@@ -424,6 +424,16 @@ function putJournalArea(aoa, journal, closeDate, journalMemoText) {
   }
 }
 
+function putTable3CheckFormulas(sheet) {
+  for (let row = 63; row <= 83; row++) {
+    sheet[`T${row}`] = {
+      t: "n",
+      f: `+(O${row}+P${row})-(Q${row}+R${row}+S${row})`,
+      v: 0
+    };
+  }
+}
+
 app.post("/api/return-liability/export", async (req, res) => {
   try {
     const {
@@ -507,6 +517,8 @@ app.post("/api/return-liability/export", async (req, res) => {
     putJournalArea(liabilityAoa, journal || {}, close_date, journal_memo_text);
 
     const liabilitySheet = XLSX.utils.aoa_to_sheet(liabilityAoa);
+
+    putTable3CheckFormulas(liabilitySheet);
 
     liabilitySheet["!cols"] = [
       { wch: 16 },
