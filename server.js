@@ -265,6 +265,21 @@ function addBlock(aoa, title, rows, block1Rows, block2Rows) {
 }
 
 function buildJournalLines(liabilityAmount, recoveryAmount) {
+  return [
+    [
+      "제품타계정대체",
+      -recoveryAmount,
+      "반품충당부채",
+      liabilityAmount
+    ],
+    [
+      "반환제품회수권",
+      recoveryAmount,
+      "제품매출",
+      -liabilityAmount
+    ]
+  ];
+}
   const lines = [];
 
   if (liabilityAmount >= 0) {
